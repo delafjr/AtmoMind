@@ -95,19 +95,24 @@ export default function Home() {
 
     fetchData();
 
-    const channel = supabase
-      .channel("realtime:sensor_data")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "sensor_data" },
-        (payload) => {
-          setData([payload.new]);
-          setHistory((prev) => [payload.new, ...prev].slice(0, 50));
-        }
-      )
-      .subscribe();
+    // ponytail: polling tiap 5 detik, upgrade ke Realtime kalau WebSocket stabil di hosting
+    const interval = setInterval(async () => {
+      const { data: latest } = await supabase
+        .from("sensor_data")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-    return () => supabase.removeChannel(channel);
+      if (latest?.length) {
+        setData(latest);
+        setHistory((prev) => {
+          const exists = prev[0]?.id === latest[0].id;
+          return exists ? prev : [latest[0], ...prev].slice(0, 50);
+        });
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const latestData = data[0] || { suhu: 29.5, kelembapan: 75, cahaya: 620 };
